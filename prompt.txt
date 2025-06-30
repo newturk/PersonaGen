@@ -1,0 +1,92 @@
+# Prompt to Clone and Set Up the PersonaGen Project
+
+You are an expert developer. Your task is to clone and set up the PersonaGen project exactly as in the current workspace. This project consists of a FastAPI backend (with Gemini LLM integration and PDF persona extraction) and a modern React frontend (Vite, Tailwind, etc.).
+
+## 1. Clone the Repository
+Clone the repository from the source (GitHub or other). If you are starting from a local copy, copy all files and folders as they are.
+
+## 2. Backend Setup (Python/FastAPI)
+
+- Navigate to the `backend` directory:
+  ```sh
+  cd backend
+  ```
+- Create a virtual environment (recommended):
+  ```sh
+  python -m venv venv
+  source venv/bin/activate  # On Windows: venv\Scripts\activate
+  ```
+- Install Python dependencies:
+  ```sh
+  pip install -r requirements.txt
+  ```
+- **Set up your Gemini API key:**
+  - Open `main.py` and set your Gemini API key in the `GEMINI_API_KEY` variable.
+  - Alternatively, use environment variables and `python-dotenv` for better security.
+- Run the FastAPI server (with auto-reload for development):
+  ```sh
+  uvicorn main:app --reload
+  ```
+- The backend will be available at `http://localhost:8000`.
+
+## 3. Frontend Setup (React/Vite)
+
+- Navigate to the `project` directory:
+  ```sh
+  cd project
+  ```
+- Install Node.js dependencies:
+  ```sh
+  npm install
+  ```
+- Start the development server:
+  ```sh
+  npm run dev
+  ```
+- The frontend will be available at `http://localhost:5173`.
+
+## 4. Project Structure
+
+- `backend/` — FastAPI backend, PDF upload, persona extraction, Gemini LLM integration
+- `project/` — React frontend (Vite, Tailwind, Framer Motion, etc.)
+- `netlify/` — (Optional) Netlify functions or deployment scripts
+
+## 5. Key Dependencies
+
+### Backend (see `backend/requirements.txt`):
+- fastapi
+- uvicorn
+- requests
+- pydantic
+- python-dotenv
+- google-genai
+- PyPDF2
+
+### Frontend (see `project/package.json`):
+- react, react-dom, react-router-dom
+- vite
+- tailwindcss, postcss, autoprefixer
+- framer-motion
+- lucide-react
+- pdfjs-dist
+- @google/genai
+- zod
+
+## 6. Special Notes
+- **Gemini API Key:** You must provide your own Gemini API key for the backend to function.
+- **PDF Extraction:** The backend uses PyPDF2 to extract text from uploaded PDFs for persona analysis.
+- **CORS:** CORS is enabled in FastAPI for local frontend-backend communication.
+- **Frontend/Backend Ports:** By default, frontend runs on 5173, backend on 8000.
+- **Uploads:** Uploaded PDFs are stored in `backend/uploads/`.
+
+## 7. Running the Full Stack
+- Start the backend first (`uvicorn main:app --reload` in `backend/`).
+- Then start the frontend (`npm run dev` in `project/`).
+- Access the app at `http://localhost:5173`.
+
+## 8. Optional: Linting and Build
+- Frontend: `npm run lint` and `npm run build` (see `project/package.json`)
+
+---
+
+**Clone and set up the project exactly as above. Ensure all dependencies are installed, the Gemini API key is set, and both frontend and backend run successfully.** 
