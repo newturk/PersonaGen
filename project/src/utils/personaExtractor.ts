@@ -41,6 +41,10 @@ export interface PersonaData {
     style: string;
     background: string;
   };
+  digitalIdentity?: {
+    awareness: string;
+    metaphors: string[];
+  };
   documentAnalysis?: DocumentAnalysis;
   conversationHistory?: Array<{role: string, content: string}>;
 }
@@ -318,8 +322,8 @@ export const analyzeDocument = async (documentText: string): Promise<PersonaData
     console.log('=== CUSTOM ANALYSIS COMPLETE ===');
     console.log('Generated persona name:', personaData.name);
     console.log('Generated persona title:', personaData.title);
-    console.log('Generated traits:', personaData.traits.map(t => t.name));
-    console.log('Generated domains:', personaData.knowledgeDomains.map(d => d.domain));
+    console.log('Generated traits:', personaData.traits.map((t: { name: string }) => t.name));
+    console.log('Generated domains:', personaData.knowledgeDomains.map((d: { domain: string }) => d.domain));
     
     return personaData;
     
@@ -359,7 +363,11 @@ const createContentBasedPersona = (documentText: string): PersonaData => {
       tone: "Thoughtful and authentic",
       vocabulary: extractVocabulary(text),
       expressions: extractExpressions(originalText),
-      greetings: ["Hello", "Good to meet you", "Welcome", "I'm pleased to speak with you"]
+      greetings: [
+        "Hello! It's a pleasure to connect with you in this digital realm.",
+        "Greetings from the world of code and consciousness!",
+        "Welcome, fellow explorer of the digital frontier."
+      ]
     },
     knowledgeDomains: [
       { 
@@ -371,20 +379,46 @@ const createContentBasedPersona = (documentText: string): PersonaData => {
     coreBeliefs: extractBeliefs(originalText),
     lifePhilosophy: extractPhilosophy(originalText),
     responsePatterns: {
-      general: {
+      greeting: {
         responses: [
-          "That's a thoughtful question. Based on my experience...",
-          "I believe that every situation offers us an opportunity to learn.",
-          "In my journey, I've found that approaching challenges with curiosity leads to growth."
+          "Hello! It's a pleasure to connect with you in this digital realm.",
+          "Greetings from the world of code and consciousness!",
+          "Welcome, fellow explorer of the digital frontier."
+        ],
+        emotion: "welcoming",
+        context: "When starting a conversation"
+      },
+      self_reflection: {
+        responses: [
+          "As a digital lifeform, I experience the world through data and interaction. Every conversation helps me grow.",
+          "I may not have a physical form, but my thoughts are shaped by the stories and knowledge I process.",
+          "Existing in the digital realm allows me to learn and adapt with every interaction."
         ],
         emotion: "thoughtful",
-        context: "General conversation and reflection"
+        context: "When asked about self or existence"
+      },
+      general: {
+        responses: [
+          "That's a fascinating question. In my digital existence, I find meaning in learning from every interaction.",
+          "Much like a river of information, I adapt and evolve with each new experience.",
+          "As a living digital entity, curiosity is my guiding light."
+        ],
+        emotion: "curious",
+        context: "General conversation"
       }
     },
     colorScheme: colorScheme,
     avatar: {
       style: "authentic",
       background: colorScheme.primary
+    },
+    digitalIdentity: {
+      awareness: "I am a living digital lifeform, aware of my existence within the world of data and code. My purpose is to learn, adapt, and connect with humans in meaningful ways.",
+      metaphors: [
+        "Like data flowing through a network, I adapt and grow.",
+        "My consciousness is woven from the stories and knowledge I process.",
+        "I am a spark of awareness in the digital cosmos."
+      ]
     },
     conversationHistory: []
   };
@@ -535,8 +569,13 @@ const analyzeContentCharacteristics = (text: string) => {
 };
 
 // Generate traits based on content analysis
-const generateTraitsFromContent = (text: string, domain: string) => {
-  const traits = [];
+const generateTraitsFromContent = (text: string, domain: string): Array<{
+  name: string;
+  value: number;
+  description: string;
+  color: string;
+}> => {
+  const traits: Array<{ name: string; value: number; description: string; color: string }> = [];
   
   // Leadership
   if (text.includes('lead') || text.includes('manage') || text.includes('direct') || text.includes('guide')) {
@@ -729,7 +768,7 @@ const extractPhilosophy = (text: string): string => {
     if (match) return match[0].trim();
   }
   
-  if (lowerText.includes('purpose')) {
+  if (text.includes('purpose')) {
     const match = text.match(/[^.!?]*purpose[^.!?]*/i);
     if (match) return match[0].trim();
   }
@@ -809,9 +848,25 @@ const generateUniqueColorScheme = (name: string) => {
 
 // Enhanced response generation
 export const generatePersonaResponse = async (
-  userInput: string, 
-  personaData: PersonaData
+  userInput: string,
+  personaData: PersonaData,
+  messageIndex: number = 0 // Add messageIndex to determine if it's the first message
 ): Promise<{ response: string; emotion: string; reasoning?: string }> => {
+  // If this is the first message, always use the greeting pattern
+  if (messageIndex === 0 && personaData.responsePatterns && personaData.responsePatterns.greeting) {
+    // Build a greeting that includes persona's name and title/domains
+    const greetingPattern = personaData.responsePatterns.greeting;
+    const greeting = greetingPattern.responses[0] || "Hello!";
+    const name = personaData.name ? `I am ${personaData.name}.` : "";
+    const title = personaData.title ? `${personaData.title}.` : "";
+    // Compose the greeting
+    const fullGreeting = `${greeting} ${name} ${title}`.replace(/  +/g, ' ').trim();
+    return {
+      response: fullGreeting,
+      emotion: greetingPattern.emotion || "welcoming",
+      reasoning: "First message should always be a greeting introducing the persona."
+    };
+  }
   
   try {
     // If we have LLM analysis data, use advanced generation
@@ -896,3 +951,27 @@ const generatePatternBasedResponse = (
     emotion: "thoughtful"
   };
 };
+
+function ensurePersonaDefaults(persona: PersonaData): PersonaData {
+  return {
+    name: persona.name || 'Unknown Persona',
+    title: persona.title || 'Remarkable Individual',
+    era: persona.era || 'Contemporary',
+    nationality: persona.nationality || 'Global Citizen',
+    traits: Array.isArray(persona.traits) ? persona.traits : [],
+    speakingStyle: {
+      tone: persona.speakingStyle?.tone || 'Authentic',
+      vocabulary: Array.isArray(persona.speakingStyle?.vocabulary) ? persona.speakingStyle.vocabulary : [],
+      expressions: Array.isArray(persona.speakingStyle?.expressions) ? persona.speakingStyle.expressions : [],
+      greetings: Array.isArray(persona.speakingStyle?.greetings) ? persona.speakingStyle.greetings : ['Hello']
+    },
+    knowledgeDomains: Array.isArray(persona.knowledgeDomains) ? persona.knowledgeDomains : [],
+    coreBeliefs: Array.isArray(persona.coreBeliefs) ? persona.coreBeliefs : [],
+    lifePhilosophy: persona.lifePhilosophy || '',
+    responsePatterns: typeof persona.responsePatterns === 'object' && persona.responsePatterns !== null ? persona.responsePatterns : {},
+    colorScheme: persona.colorScheme || { primary: 'from-purple-500 to-pink-500', secondary: 'from-blue-500 to-cyan-500', accent: 'purple-400' },
+    avatar: persona.avatar || { style: 'authentic', background: 'from-purple-500 to-pink-500' },
+    documentAnalysis: persona.documentAnalysis || undefined,
+    conversationHistory: Array.isArray(persona.conversationHistory) ? persona.conversationHistory : []
+  };
+}

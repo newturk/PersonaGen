@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { Brain, Sparkles, MessageSquare, Clock, Upload, ArrowRight } from 'lucide-react';
+import { Brain, Sparkles, MessageSquare, Clock, Upload, ArrowRight, Loader } from 'lucide-react';
 
 const LandingPage = () => {
   const features = [
@@ -26,6 +26,79 @@ const LandingPage = () => {
       description: 'Explore your life story through an interactive timeline of key moments and experiences.',
     },
   ];
+
+  // Demo video state
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [demoVideoUrl, setDemoVideoUrl] = useState<string | null>(null);
+  const [showVideoPlayer, setShowVideoPlayer] = useState(false);
+  const [videoId, setVideoId] = useState<string | null>(null);
+  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
+  const [generationProgress, setGenerationProgress] = useState<string | null>(null);
+
+  const handleWatchDemo = async () => {
+    setIsGenerating(true);
+    setDemoVideoUrl(null);
+    setShowVideoPlayer(true);
+    setVideoId(null);
+    try {
+      const response = await fetch('https://tavusapi.com/v2/videos', {
+        method: 'POST',
+        headers: {
+          'x-api-key': 'd43d6635e945482d912947536f8575eb',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          replica_id: 'rc2146c13e81',
+          script: `This is PersonaGen. Your digital bridge to those cherished connections.`,
+          video_name: 'Demo Video'
+        })
+      });
+      const data = await response.json();
+      if (data.video_id) {
+        setVideoId(data.video_id);
+        // Start polling for video status
+        const interval = setInterval(async () => {
+          try {
+            const statusRes = await fetch(`https://tavusapi.com/v2/videos/${data.video_id}`, {
+              headers: { 'x-api-key': 'd43d6635e945482d912947536f8575eb' }
+            });
+            const statusData = await statusRes.json();
+            if (statusData.status === 'ready' && statusData.download_url) {
+              setDemoVideoUrl(statusData.download_url);
+              setIsGenerating(false);
+              if (pollingInterval) {
+                clearInterval(pollingInterval);
+                setPollingInterval(null);
+              }
+            }
+            if (statusData.generation_progress) {
+              setGenerationProgress(statusData.generation_progress);
+            }
+          } catch {}
+        }, 5000);
+        setPollingInterval(interval);
+      } else if (data.hosted_url) {
+        setDemoVideoUrl(data.hosted_url);
+        setIsGenerating(false);
+      } else {
+        alert('Video generation started. Please check back later!');
+        setIsGenerating(false);
+      }
+    } catch (err) {
+      alert('Failed to generate demo video.');
+      setIsGenerating(false);
+    }
+  };
+
+  const handleCloseVideo = () => {
+    setShowVideoPlayer(false);
+    setDemoVideoUrl(null);
+    setVideoId(null);
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+      setPollingInterval(null);
+    }
+  };
 
   return (
     <div className="pt-16">
@@ -66,10 +139,45 @@ const LandingPage = () => {
               <span>Start Building</span>
               <ArrowRight className="w-5 h-5" />
             </Link>
-            <button className="button-secondary text-lg">
-              Watch Demo
+            <button
+              className="button-secondary text-lg"
+              onClick={handleWatchDemo}
+              disabled={isGenerating}
+            >
+              {isGenerating ? "Generating Demo..." : "Watch Demo"}
             </button>
           </motion.div>
+
+          {/* Video Player Modal */}
+          {showVideoPlayer && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+              <div className="relative bg-white rounded-lg shadow-lg p-4 max-w-2xl w-full">
+                <button
+                  onClick={handleCloseVideo}
+                  className="absolute top-2 right-2 text-gray-700 hover:text-red-500 text-2xl font-bold"
+                  aria-label="Close"
+                >
+                  &times;
+                </button>
+                {demoVideoUrl ? (
+                  <video
+                    src={demoVideoUrl}
+                    controls
+                    autoPlay
+                    className="w-full h-auto rounded"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-16">
+                    {generationProgress && (
+                      <p className="text-md text-gray-700 font-semibold mb-2">Progress: {generationProgress.replace('/100', '%')}</p>
+                    )}
+                    <Loader className="w-16 h-16 text-purple-400 animate-spin mb-4" />
+                    <p className="text-lg text-gray-700 font-semibold">Generating your demo video...</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Floating Avatar */}
           <motion.div

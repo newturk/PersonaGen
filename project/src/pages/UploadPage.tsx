@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Upload, FileText, Image, Video, Mic, X, CheckCircle, Loader, Brain, Sparkles, Zap, BookOpen } from 'lucide-react';
+import { Upload, FileText, Image, Video, Mic, X, CheckCircle, Loader, Brain, Sparkles, Zap, BookOpen, MicOff } from 'lucide-react';
 
 const UploadPage = () => {
   const navigate = useNavigate();
@@ -13,6 +13,13 @@ const UploadPage = () => {
   const [processingStage, setProcessingStage] = useState<string>('');
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
+  const [isMicOn, setIsMicOn] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
+  const [showDialog, setShowDialog] = useState(false);
+  const textAreaRef = React.useRef<HTMLTextAreaElement>(null);
+  const [sttError, setSttError] = useState<string | null>(null);
 
   // Enhanced demo options with more variety
   const demoOptions = [
@@ -202,26 +209,95 @@ const UploadPage = () => {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const res = await fetch('http://localhost:8000/upload_pdf', {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-      if (data.persona) {
-        localStorage.setItem('currentPersona', JSON.stringify(data.persona));
+    const res = await fetch('http://localhost:8000/upload_pdf', {
+      method: 'POST',
+      body: formData,
+    });
+    const data = await res.json();
+    if (data.persona) {
+      localStorage.setItem('currentPersona', JSON.stringify(data.persona));
         if (data.full_text) {
           localStorage.setItem('currentPersonaFullText', data.full_text);
         }
         setIsExtracting(false);
-        alert('Persona extracted! You can now chat as this character.');
-        navigate('/chat');
-      } else {
+      alert('Persona extracted! You can now chat as this character.');
+      navigate('/chat');
+    } else {
         setExtractError('Error extracting persona: ' + (data.error || 'Unknown error'));
         setIsExtracting(false);
       }
     } catch (err) {
       setExtractError('Network or server error during extraction.');
       setIsExtracting(false);
+    }
+  };
+
+  const handleMicToggle = () => {
+    setIsMicOn((prev) => !prev);
+    setShowDialog((prev) => !prev);
+  };
+
+  const handleStartRecording = async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+    } catch (e) {
+      recorder = new MediaRecorder(stream); // fallback
+    }
+    setMediaRecorder(recorder);
+    setAudioChunks([]);
+    recorder.start();
+    setIsRecording(true);
+
+    recorder.ondataavailable = (e) => {
+      setAudioChunks((prev) => [...prev, e.data]);
+    };
+  };
+
+  const handleStopRecording = async () => {
+    if (mediaRecorder) {
+      mediaRecorder.stop();
+      setIsRecording(false);
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        // Send to ElevenLabs Speech-to-Text API
+        const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
+        const formData = new FormData();
+        formData.append('file', audioBlob, 'recording.webm');
+
+        try {
+          const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
+            method: 'POST',
+            headers: {
+              'xi-api-key': apiKey,
+            },
+            body: formData,
+          });
+
+          if (!response.ok) {
+            if (response.status === 422) {
+              setSttError('Audio format not supported by ElevenLabs. Please try a shorter recording or use a different browser.');
+            } else {
+              setSttError('Speech-to-text failed. Please try again.');
+            }
+            setShowDialog(false);
+            return;
+          }
+
+          const data = await response.json();
+          const transcript = data.text || data.transcription || '';
+          setTextInput(transcript);
+          if (textAreaRef.current) {
+            textAreaRef.current.value = transcript;
+          }
+          setShowDialog(false);
+        } catch (err) {
+          setSttError('Speech-to-text failed. Please check your connection and try again.');
+          setShowDialog(false);
+        }
+      };
     }
   };
 
@@ -465,14 +541,44 @@ const UploadPage = () => {
                 <h2 className="text-2xl font-semibold text-white mb-6 flex items-center">
                   <FileText className="w-6 h-6 mr-2 text-blue-400" />
                   Or Paste Text Content
+                  <button onClick={handleMicToggle} className="ml-4 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors">
+                    {isMicOn ? <Mic className="w-5 h-5 text-green-400" /> : <MicOff className="w-5 h-5 text-gray-400" />}
+                  </button>
                 </h2>
-                
+                {showDialog && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+                    <div className="bg-white rounded-xl p-8 flex flex-col items-center space-y-4">
+                      <h3 className="text-lg font-bold mb-2">Speech to Text Recorder</h3>
+                      <button
+                        onClick={handleStartRecording}
+                        disabled={isRecording}
+                        className="px-4 py-2 bg-green-500 text-white rounded-lg disabled:opacity-50"
+                      >
+                        Start Record
+                      </button>
+                      <button
+                        onClick={handleStopRecording}
+                        disabled={!isRecording}
+                        className="px-4 py-2 bg-red-500 text-white rounded-lg disabled:opacity-50"
+                      >
+                        Stop
+                      </button>
+                      <button
+                        onClick={() => setShowDialog(false)}
+                        className="mt-2 px-4 py-2 bg-gray-300 rounded-lg"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div className="space-y-4">
                   <div>
                     <label className="block text-white/70 text-sm font-medium mb-2">
                       Biographical Content
                     </label>
                     <textarea
+                      ref={textAreaRef}
                       value={textInput}
                       onChange={(e) => setTextInput(e.target.value)}
                       placeholder="Paste autobiography, biography, interview transcripts, or personal story content here. The AI will analyze this content to identify the main character and extract their personality, communication style, and knowledge domains..."
@@ -514,6 +620,12 @@ const UploadPage = () => {
                     </ul>
                   </div>
                 </div>
+                {sttError && (
+                  <div className="mt-2 text-red-400 bg-red-900/30 px-4 py-2 rounded-lg text-center">
+                    {sttError}
+                    <button className="block mt-2 text-white underline" onClick={() => setSttError(null)}>Dismiss</button>
+                  </div>
+                )}
               </motion.div>
             </motion.div>
           )}

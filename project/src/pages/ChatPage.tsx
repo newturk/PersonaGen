@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Mic, MicOff, Brain, User, Volume2, BookOpen, Heart, Lightbulb, Star } from 'lucide-react';
+import { Send, Mic, MicOff, Brain, User, Volume2, VolumeX, BookOpen, Heart, Lightbulb, Star } from 'lucide-react';
 import { PersonaData, generatePersonaResponse } from '../utils/personaExtractor';
 
 interface Message {
@@ -12,6 +12,58 @@ interface Message {
   emotion?: 'thoughtful' | 'passionate' | 'wise' | 'encouraging';
 }
 
+const VOICE_ID = "JBFqnCBsd6RMkjVDRZzb"; // Default ElevenLabs voice ID
+
+async function playTTS(text: string) {
+  const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
+  const url = `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "xi-api-key": apiKey,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      text,
+      model_id: "eleven_multilingual_v2",
+      output_format: "mp3_44100_128"
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error("TTS API error: " + (await response.text()));
+  }
+
+  const audioData = await response.arrayBuffer();
+  const audioBlob = new Blob([audioData], { type: "audio/mp3" });
+  const audioUrl = URL.createObjectURL(audioBlob);
+  const audio = new Audio(audioUrl);
+  audio.play();
+}
+
+function normalizePersona(persona: any): PersonaData {
+  return {
+    name: persona.name || "Unknown Persona",
+    title: persona.title || "",
+    era: persona.era || "",
+    nationality: persona.nationality || "",
+    traits: Array.isArray(persona.traits) ? persona.traits : [],
+    speakingStyle: {
+      tone: persona.speakingStyle?.tone || "",
+      vocabulary: Array.isArray(persona.speakingStyle?.vocabulary) ? persona.speakingStyle.vocabulary : [],
+      expressions: Array.isArray(persona.speakingStyle?.expressions) ? persona.speakingStyle.expressions : [],
+      greetings: Array.isArray(persona.speakingStyle?.greetings) && persona.speakingStyle.greetings.length > 0 ? persona.speakingStyle.greetings : ["Hello"]
+    },
+    knowledgeDomains: Array.isArray(persona.knowledgeDomains) ? persona.knowledgeDomains : [],
+    coreBeliefs: Array.isArray(persona.coreBeliefs) ? persona.coreBeliefs : [],
+    lifePhilosophy: persona.lifePhilosophy || "",
+    responsePatterns: persona.responsePatterns || {},
+    colorScheme: persona.colorScheme || { primary: "#007bff", secondary: "#FFD700", accent: "#FFA500" },
+    avatar: persona.avatar || null
+  };
+}
+
 const ChatPage = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -21,13 +73,15 @@ const ChatPage = () => {
   const [fullText, setFullText] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [audioStates, setAudioStates] = useState<{ [id: string]: boolean }>({});
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     // Load persona data from localStorage
     const storedPersona = localStorage.getItem('currentPersona');
     const storedFullText = localStorage.getItem('currentPersonaFullText');
     if (storedPersona) {
-      const persona = JSON.parse(storedPersona);
+      const persona = normalizePersona(JSON.parse(storedPersona));
       setPersonaData(persona);
       if (storedFullText) setFullText(storedFullText);
       
@@ -44,10 +98,11 @@ const ChatPage = () => {
   }, []);
 
   const getPersonalizedGreeting = (persona: PersonaData): string => {
-    const greeting = persona.speakingStyle.greetings[0] || "Hello";
-    const expression = persona.speakingStyle.expressions[0] || "I'm pleased to meet you";
-    
-    return `${greeting}! I am ${persona.name}, and ${expression.toLowerCase()}. ${persona.lifePhilosophy} What would you like to discuss today?`;
+    const greeting = persona.speakingStyle?.greetings?.[0] || "Hello";
+    const expression = persona.speakingStyle?.expressions?.[0] || "I'm pleased to meet you";
+    const name = persona.name || "Unknown Persona";
+    const philosophy = persona.lifePhilosophy || "";
+    return `${greeting}! I am ${name}, and ${expression.toLowerCase()}. ${philosophy} What would you like to discuss today?`;
   };
 
   const scrollToBottom = () => {
@@ -144,6 +199,59 @@ const ChatPage = () => {
     return personaData.knowledgeDomains.slice(0, 5).map(domain => domain.domain);
   };
 
+  // Play TTS audio for a message
+  const handleAudioClick = async (id: string, text: string) => {
+    // If already playing, stop and reset
+    if (audioStates[id] && audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setAudioStates(prev => ({ ...prev, [id]: false }));
+      return;
+    }
+
+    setAudioStates(prev => ({ ...prev, [id]: true }));
+
+    try {
+      const apiKey = import.meta.env.VITE_ELEVENLABS_API_KEY;
+      const VOICE_ID = "JBFqnCBsd6RMkjVDRZzb";
+      const url = `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`;
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "xi-api-key": apiKey,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          text,
+          model_id: "eleven_multilingual_v2",
+          output_format: "mp3_44100_128"
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error("TTS API error: " + (await response.text()));
+      }
+
+      const audioData = await response.arrayBuffer();
+      const audioBlob = new Blob([audioData], { type: "audio/mp3" });
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+
+      audio.play();
+
+      // When audio ends, reset state
+      audio.onended = () => {
+        setAudioStates(prev => ({ ...prev, [id]: false }));
+        audioRef.current = null;
+      };
+    } catch (err) {
+      alert("Failed to play audio: " + err);
+      setAudioStates(prev => ({ ...prev, [id]: false }));
+    }
+  };
+
   if (!personaData) {
     return (
       <div className="pt-16 h-screen flex items-center justify-center">
@@ -175,9 +283,9 @@ const ChatPage = () => {
             <p className={`text-${personaData.colorScheme.accent} text-sm font-medium`}>{personaData.title}</p>
             <p className="text-white/60 text-xs">{personaData.era} • {personaData.nationality}</p>
             <div className="flex flex-wrap gap-1 mt-1">
-              {personaData.traits.slice(0, 3).map((trait) => (
-                <span key={trait.name} className={`px-2 py-0.5 bg-${personaData.colorScheme.accent}/20 text-${personaData.colorScheme.accent} text-xs rounded-full`}>
-                  {trait.name.split(' ')[0]}
+              {personaData.traits?.slice(0, 3).map((trait) => (
+                <span key={trait.name} className={`px-2 py-0.5 bg-${personaData.colorScheme?.accent || 'purple-400'}/20 text-${personaData.colorScheme?.accent || 'purple-400'} text-xs rounded-full`}>
+                  {trait.name?.split(' ')[0]}
                 </span>
               ))}
             </div>
@@ -186,7 +294,7 @@ const ChatPage = () => {
             <button className="text-white/70 hover:text-white transition-colors mb-2">
               <Volume2 className="w-5 h-5" />
             </button>
-            <p className="text-white/50 text-xs">Speaking Style: {personaData.speakingStyle.tone}</p>
+            <p className="text-white/50 text-xs">Speaking Style: {personaData.speakingStyle?.tone}</p>
           </div>
         </div>
       </div>
@@ -222,15 +330,27 @@ const ChatPage = () => {
                     <div className={`rounded-2xl p-4 ${
                       message.sender === 'user'
                         ? 'bg-blue-500 text-white'
-                        : `glass-card text-white border-l-4 border-${personaData.colorScheme.accent}`
+                        : `glass-card text-white border-l-4 border-${personaData.colorScheme?.accent || 'purple-400'}`
                     }`}>
                       <p className="leading-relaxed text-sm md:text-base">{message.content}</p>
                       {message.emotion && message.sender === 'persona' && (
-                        <div className={`flex items-center space-x-1 mt-2 text-${personaData.colorScheme.accent} text-xs`}>
+                        <div className={`flex items-center space-x-1 mt-2 text-${personaData.colorScheme?.accent || 'purple-400'} text-xs`}>
                           {getEmotionIcon(message.emotion)}
                           <span className="capitalize">{message.emotion}</span>
                         </div>
                       )}
+                      {/* Audio Button */}
+                      <button
+                        className="ml-2 mt-2 p-1 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+                        onClick={() => handleAudioClick(message.id, message.content)}
+                        aria-label={audioStates[message.id] ? 'Disable audio' : 'Enable audio'}
+                      >
+                        {audioStates[message.id] ? (
+                          <Volume2 className="w-5 h-5 text-purple-400" />
+                        ) : (
+                          <VolumeX className="w-5 h-5 text-gray-400" />
+                        )}
+                      </button>
                     </div>
                     <p className={`text-xs text-white/50 mt-1 ${
                       message.sender === 'user' ? 'text-right' : 'text-left'
@@ -253,13 +373,13 @@ const ChatPage = () => {
                 <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${personaData.colorScheme.primary} flex items-center justify-center`}>
                   <Brain className="w-5 h-5 text-white" />
                 </div>
-                <div className={`glass-card rounded-2xl p-4 border-l-4 border-${personaData.colorScheme.accent}`}>
+                <div className={`glass-card rounded-2xl p-4 border-l-4 border-${personaData.colorScheme?.accent || 'purple-400'}`}>
                   <div className="flex space-x-1">
-                    <div className={`w-2 h-2 bg-${personaData.colorScheme.accent} rounded-full animate-bounce`}></div>
-                    <div className={`w-2 h-2 bg-${personaData.colorScheme.accent} rounded-full animate-bounce`} style={{ animationDelay: '0.1s' }}></div>
-                    <div className={`w-2 h-2 bg-${personaData.colorScheme.accent} rounded-full animate-bounce`} style={{ animationDelay: '0.2s' }}></div>
+                    <div className={`w-2 h-2 bg-${personaData.colorScheme?.accent || 'purple-400'} rounded-full animate-bounce`}></div>
+                    <div className={`w-2 h-2 bg-${personaData.colorScheme?.accent || 'purple-400'} rounded-full animate-bounce`} style={{ animationDelay: '0.1s' }}></div>
+                    <div className={`w-2 h-2 bg-${personaData.colorScheme?.accent || 'purple-400'} rounded-full animate-bounce`} style={{ animationDelay: '0.2s' }}></div>
                   </div>
-                  <p className={`text-${personaData.colorScheme.accent} text-xs mt-1`}>{personaData.name.split(' ')[0]} is thinking...</p>
+                  <p className={`text-${personaData.colorScheme?.accent || 'purple-400'} text-xs mt-1`}>{personaData.name?.split(' ')[0]} is thinking...</p>
                 </div>
               </div>
             </motion.div>
@@ -279,7 +399,7 @@ const ChatPage = () => {
               <button
                 key={topic}
                 onClick={() => setInputValue(`Tell me about your experience with ${topic.toLowerCase()}`)}
-                className={`px-3 py-1 bg-${personaData.colorScheme.accent}/20 hover:bg-${personaData.colorScheme.accent}/30 text-${personaData.colorScheme.accent} text-xs rounded-full transition-colors`}
+                className={`px-3 py-1 bg-${personaData.colorScheme?.accent || 'purple-400'}/20 hover:bg-${personaData.colorScheme?.accent || 'purple-400'}/30 text-${personaData.colorScheme?.accent || 'purple-400'} text-xs rounded-full transition-colors`}
               >
                 {topic}
               </button>
@@ -305,7 +425,7 @@ const ChatPage = () => {
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder={`Ask ${personaData.name.split(' ')[0]} about their life, experiences, or wisdom...`}
+                placeholder={`Ask ${personaData.name?.split(' ')[0]} about their life, experiences, or wisdom...`}
                 className="input-field pr-12"
               />
               <button
@@ -313,7 +433,7 @@ const ChatPage = () => {
                 disabled={!inputValue.trim()}
                 className={`absolute right-2 top-1/2 transform -translate-y-1/2 p-2 rounded-lg transition-all duration-200 ${
                   inputValue.trim()
-                    ? `bg-${personaData.colorScheme.accent} hover:bg-${personaData.colorScheme.accent}/80 text-white`
+                    ? `bg-${personaData.colorScheme?.accent || 'purple-400'} hover:bg-${personaData.colorScheme?.accent || 'purple-400'}/80 text-white`
                     : 'bg-white/5 text-white/30 cursor-not-allowed'
                 }`}
               >
@@ -323,7 +443,7 @@ const ChatPage = () => {
           </div>
           
           <p className="text-white/40 text-xs mt-2 text-center">
-            This digital persona embodies {personaData.name}'s authentic personality, knowledge, and communication style
+            This digital persona embodies {personaData.name}
           </p>
         </div>
       </div>
